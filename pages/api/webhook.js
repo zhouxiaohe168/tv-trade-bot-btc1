@@ -2,15 +2,34 @@
 import axios from 'axios';
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method Not Allowed' });
   }
+  // 兼容 TradingView 发来的 body
+  let body = {};
+  try {
+    body = typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
+  } catch {
+    return res.status(400).json({ ok: false, error: 'invalid_json' });
+  }
+
+  // 安全校验
+  const expected = process.env.WEBHOOK_SECRET;
+  if (expected && body?.secret !== expected) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+
   try {
     const { data } = await axios.get(
       'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd'
     );
-    return res.status(200).json({ ok: true, price: data?.bitcoin?.usd ?? null });
+    const btc = data?.bitcoin?.usd ?? null;
+
+    console.log('[webhook] payload:', body);
+    console.log('[webhook] btc_usd:', btc);
+
+    return res.status(200).json({ ok: true, btc_usd: btc });
   } catch (e) {
     return res.status(500).json({ ok: false, error: 'fetch_failed' });
   }
